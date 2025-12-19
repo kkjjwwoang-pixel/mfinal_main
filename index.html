@@ -2867,16 +2867,48 @@
           const vacImg  = document.getElementById('vacuum-img');    // 회전 O
           if(!vacWrap || !vacImg) return;
 
-          // 마우스(=청소기) 위치
+          // 마우스 위치
           let mouseX = window.innerWidth * 0.5;
           let mouseY = window.innerHeight * 0.5;
+          
+          // 이전 마우스 위치 (회전 계산용)
           let prevMouseX = mouseX;
           let prevMouseY = mouseY;
-          let rotationAngle = 0;
+          
+          // 현재 회전 각도와 목표 회전 각도
+          let currentRotation = 0;
+          let targetRotation = 0;
+          
+          // 최대 회전 각도 (양옆 60도)
+          const MAX_ROTATION = 60;
+          
+          // 최소 이동 거리 (너무 작은 움직임은 무시)
+          const minMoveDistance = 5;
+          
+          // 부드러운 보간 계수 (0~1, 낮을수록 더 부드러움)
+          const smoothingFactor = 0.15;
 
           // 회전 적용 함수
           function applyVacuumRotation(deg){
             vacImg.style.transform = `rotate(${deg}deg)`;
+          }
+          
+          // 부드러운 회전 업데이트 (애니메이션 프레임)
+          let animationFrameId = null;
+          function smoothRotate() {
+            // 목표 각도로 부드럽게 보간
+            currentRotation += (targetRotation - currentRotation) * smoothingFactor;
+            
+            // 거의 같아지면 애니메이션 중지
+            if (Math.abs(targetRotation - currentRotation) < 0.1) {
+              currentRotation = targetRotation;
+              cancelAnimationFrame(animationFrameId);
+              animationFrameId = null;
+            } else {
+              animationFrameId = requestAnimationFrame(smoothRotate);
+            }
+            
+            applyVacuumRotation(currentRotation);
           }
 
           // 마우스 이동 = 청소기 이동
@@ -2885,7 +2917,11 @@
             mouseY = e.clientY;
             
             if(!document.body.classList.contains('cleaning-mode')){
-              vacWrap.style.display = 'none'; 
+              vacWrap.style.display = 'none';
+              if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+              }
               return;
             }
             
@@ -2893,24 +2929,31 @@
             vacWrap.style.left = mouseX + 'px';
             vacWrap.style.top  = mouseY + 'px';
             
-            // 마우스 이동 방향으로 회전
+            // 마우스 이동 방향 계산
             const deltaX = mouseX - prevMouseX;
-            const deltaY = mouseY - prevMouseY;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const distance = Math.sqrt(deltaX * deltaX + (mouseY - prevMouseY) * (mouseY - prevMouseY));
             
-            if (distance > 5) {
-              const angle = Math.atan2(deltaY, deltaX);
-              let targetAngle = angle * (180 / Math.PI);
+            // 최소 거리 이상 움직였을 때만 회전 업데이트
+            if (distance > minMoveDistance) {
+              // 오른쪽으로 가면 양수, 왼쪽으로 가면 음수
+              // 이동 거리에 비례하여 회전 각도 계산 (최대 ±60도)
+              const rotationRatio = Math.min(1, Math.abs(deltaX) / 50); // 50px 이동 시 최대 회전
               
-              // 회전 각도 제한 (-90도 ~ +90도)
-              if (targetAngle > 90) {
-                targetAngle = 90;
-              } else if (targetAngle < -90) {
-                targetAngle = -90;
+              if (deltaX > 0) {
+                // 오른쪽으로 이동 → 오른쪽으로 회전 (양수, 최대 60도)
+                targetRotation = rotationRatio * MAX_ROTATION;
+              } else if (deltaX < 0) {
+                // 왼쪽으로 이동 → 왼쪽으로 회전 (음수, 최대 -60도)
+                targetRotation = -rotationRatio * MAX_ROTATION;
+              } else {
+                // 수직 이동만 있을 때는 점진적으로 0으로
+                targetRotation = targetRotation * 0.9;
               }
               
-              rotationAngle = rotationAngle * 0.8 + targetAngle * 0.2;
-              applyVacuumRotation(rotationAngle);
+              // 부드러운 회전 애니메이션 시작
+              if (!animationFrameId) {
+                animationFrameId = requestAnimationFrame(smoothRotate);
+              }
             }
             
             prevMouseX = mouseX;
@@ -2919,6 +2962,10 @@
 
           document.addEventListener('mouseleave', ()=>{
             vacWrap.style.display = 'none';
+            if (animationFrameId) {
+              cancelAnimationFrame(animationFrameId);
+              animationFrameId = null;
+            }
           });
         })();
     </script>
